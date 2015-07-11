@@ -163,13 +163,6 @@ void loop()    // Main loop
       baro_down_command = 0;
       if (abs(alt_error) > 2) baro_down_command = alt_error*baro_gain;  // this assumes a command of 0 remains constant, -100 full down, +100 full up
       baro_down_command = constrain(baro_down_command, -100, 100);    // limit command between ±100
-//      Serial.print("    desired_alt = ");
-//      Serial.print(desired_alt);
-//      Serial.print("    alt_error = ");
-//      Serial.print(alt_error);
-//      Serial.print("    baro_down_command = ");
-//      Serial.print(baro_down_command);
-//      Serial.println("");
     }
   }
   //  Map input commands to ±100 - this is so -100 = full-speed backwards, +100 = full-speed forward
@@ -272,22 +265,6 @@ void calibrate_radio()
 
     etime = millis() - start_time;
   }
-  Serial.println("Calibration Complete ...");
-  Serial.println("***********************************************************************************");
-  Serial.println("***********************************************************************************");
-  Serial.println("***********************************************************************************");
-  Serial.print("   min throttle:  ");
-  Serial.print(min_pulse_throttle);
-  Serial.print("   max throttle:  ");
-  Serial.println(max_pulse_throttle);
-  Serial.print("   min steering:  ");
-  Serial.print(min_pulse_steering);
-  Serial.print("   max steering:  ");
-  Serial.println(max_pulse_steering);
-  Serial.print("   min down:  ");
-  Serial.print(min_pulse_down);
-  Serial.print("   max down:  ");
-  Serial.println(max_pulse_down);
 
 }
 
