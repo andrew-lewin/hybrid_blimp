@@ -121,17 +121,6 @@ void setup()
 
 void loop()    // Main loop
 {
-  //  bool battery_low = check_battery(battery_pin);
-  //  if (battery_low == true)  // if LiPo is low, just go down and do nothing else!
-  //  {
-  //    down_motor_signal  = 0;
-  //    left_motor_signal  = 0;
-  //    right_motor_signal = 0;
-  //  }
-  //  else
-  //  {
-
-
   // Determine if altitude is being driven with RC or the barometer, and if it should be switched ...
   aux_command = map(pulseIn(aux_pin, HIGH, 25000), min_pulse_aux, max_pulse_aux, -100, 100);
   if (aux_command < -75)  // assume this means baro-control (this is to the right)
@@ -210,39 +199,6 @@ void loop()    // Main loop
   right_motor_signal = constrain(right_motor_signal, min_pwm_signal_throttle, max_pwm_signal_throttle);
   down_motor_signal  = constrain(down_motor_signal, min_pwm_signal_down, max_pwm_signal_down);
   //  }
-  //Debugging outputs ...
-//  Serial.print("Down Command = ");
-//  Serial.print(down_command);
-//  Serial.print("    Forward Command = ");
-//  Serial.print(throttle_command);
-//  Serial.print("    Turn Command = ");
-//  Serial.print(abs(steering_command));
-//  if (steering_command > 0) Serial.print(" Right");
-//  else   Serial.print(" Left");
-//  Serial.print("    Left motor_signal = ");
-//  Serial.print(left_motor_signal);
-//  Serial.print("    Right motor_signal = ");
-//  Serial.print(right_motor_signal);
-//  Serial.print("    Down motor_signal = ");
-//  Serial.print(down_motor_signal);
-//  Serial.print("    RC Control = ");
-//  Serial.print(rc_control_down);
-//  Serial.print("    baro_down_command = ");
-//  Serial.print(baro_down_command);
-//  Serial.println("");
-
-// Calibrating outputs
-//  throttle_command = pulseIn(throttle_pin, HIGH, 25000);
-//  steering_command = pulseIn(steering_pin, HIGH, 25000);
-//  down_command     = pulseIn(down_pin,     HIGH, 25000);
-//  Serial.print("Down Command = ");
-//  Serial.print(down_command);
-//  Serial.print("    Forward Command = ");
-//  Serial.print(throttle_command);
-//  Serial.print("    Steering Command = ");
-//  Serial.print(abs(steering_command));
-//  Serial.println();
-
 
   go(left_motor,  left_motor_signal);
   go(right_motor, right_motor_signal);
@@ -393,14 +349,3 @@ double getPressure()
   }
   else Serial.println("error starting temperature measurement\n");
 }
-
-
-
-
-
-
-
-
-
-
-
