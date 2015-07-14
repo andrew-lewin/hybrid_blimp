@@ -5,6 +5,8 @@
 // initialize barometer stuff ...
 #include <SFE_BMP180.h>
 #include <Wire.h>
+#include <NewPing.h>
+
 // You will need to create an SFE_BMP180 object, here called "pressure":
 SFE_BMP180 pressure;
 double baseline;   // baseline pressure to work from ...
@@ -23,7 +25,7 @@ double baseline;   // baseline pressure to work from ...
 // Initialize other stuff
 int left_motor[]  = {3, 2,  4 }; // 3-pins controlling motor thru h-bridge
 int right_motor[] = {5, A2, A3}; // 3-pins controlling motor thru h-bridge
-int down_motor[]  = {6, 8, 9}; // 3-pins controlling motor thru h-bridge
+int down_motor[]  = {6, 8, 9};   // 3-pins controlling motor thru h-bridge
 int left_motor_signal  = 0;      // Initial motor signal (initiallly stopped until there is a reason to move)
 int right_motor_signal = 0;      // Initial motor signal (initiallly stopped until there is a reason to move)
 int down_motor_signal  = 0;      // Initial motor signal (initiallly stopped until there is a reason to move)
@@ -32,7 +34,7 @@ int throttle_command;            // -100 is full-speed backward, +100 is full-sp
 int steering_command;            // +100 is full right turn, -100 is full left turn, 0 is straight
 int rc_down_command;             // +100 is full speed, 0 is off
 int down_command;                // +100 is full speed, 0 is off
-int aux_pin = 10;                 // Pin that the aux input comes in on (used to determine RC vs. baro altitude control)
+int aux_pin = 10;                // Pin that the aux input comes in on (used to determine RC vs. baro altitude control)
 int throttle_pin = 7;            // Pin that the throttle input comes in on
 int steering_pin = 11;           // Pin that the steering input comes in on
 int down_pin = 12;               // Pin that the altitude-fan input comes in on
@@ -40,8 +42,8 @@ int battery_pin = A1;            // Pin to read the battery voltage
 int led_pin = 13;
 
 // Initialize min and max radio inputs ...
-int min_pulse_throttle = 1200;  // These values are to set the full left/right and forward/reverse pulse values from the radio
-int max_pulse_throttle = 1940;  // These should probably be found by some sort of startup calibration
+int min_pulse_throttle = 1200;   // These values are to set the full left/right and forward/reverse pulse values from the radio
+int max_pulse_throttle = 1940;   // These should probably be found by some sort of startup calibration
 int min_pulse_steering = 1100;
 int max_pulse_steering = 1940;
 int min_pulse_down = 1180;
@@ -112,59 +114,20 @@ void setup()
 
   pinMode(led_pin, OUTPUT);
 
+  // initialize sonar
+  Serial.begin(115200); // Open serial monitor at 115200 baud to see ping results.
+
   //  This function calibrates the radio to set the min/max of the pulse-in values - need to figure out a way to do it when desired,
   //  but not every time ...
 //    calibrate_radio();
 
 }    // End setup
 
-
-void loop()    // Main loop
-{
-  // Determine if altitude is being driven with RC or the barometer, and if it should be switched ...
-  aux_command = map(pulseIn(aux_pin, HIGH, 25000), min_pulse_aux, max_pulse_aux, -100, 100);
-  if (aux_command < -75)  // assume this means baro-control (this is to the right)
-  {
-    double alt,P;
-    P = getPressure();   // Get a new pressure reading:
-    desired_alt = pressure.altitude(P,baseline) / 0.3048;  // set a baseline desired altitude (in feet) based on new pressure ...
-    rc_control_down = false;
-    for (int i = 1; i < 3; i++)
-    {
-      digitalWrite(led_pin, HIGH);
-      delay(250);
-      digitalWrite(led_pin, LOW);
-      delay(100);
-    }
-  }
-  else if (aux_command > 75)   // rc control ...
-  {
-    rc_control_down = true;
-    for (int i = 1; i < 3; i++)
-    {
-      digitalWrite(led_pin, HIGH);
-      delay(100);
-      digitalWrite(led_pin, LOW);
-      delay(250);
-    }
-  }
-
-  if (rc_control_down == false)
-  {
-    if ( millis() - timer > 250 )     // check pressure every 1/4 second
-    {
-      timer = millis();
-      double alt,P;
-      P = getPressure();   // Get a new pressure reading:
-      alt = pressure.altitude(P,baseline) / 0.3048;  // calculate altitude (in feet) based on new pressure ...
-      float alt_error = alt - desired_alt;
-      float baro_gain = 15;
-      //  This control law does nothing if within 2' of desired altitude, and linear proportional response outside of 2'
-      baro_down_command = 0;
-      if (abs(alt_error) > 2) baro_down_command = alt_error*baro_gain;  // this assumes a command of 0 remains constant, -100 full down, +100 full up
-      baro_down_command = constrain(baro_down_command, -100, 100);    // limit command between ±100
-    }
-  }
+// Main Loop
+void loop() {
+  check_barometer()
+  check_ping()
+  
   //  Map input commands to ±100 - this is so -100 = full-speed backwards, +100 = full-speed forward
   throttle_command = map(pulseIn(throttle_pin, HIGH, 25000), min_pulse_throttle, max_pulse_throttle, -100, 100);
   steering_command = map(pulseIn(steering_pin, HIGH, 25000), min_pulse_steering, max_pulse_steering, -100, 100);
@@ -191,7 +154,6 @@ void loop()    // Main loop
   left_motor_signal  = 0.7 * constrain(left_motor_signal, min_pwm_signal_throttle, max_pwm_signal_throttle);
   right_motor_signal = constrain(right_motor_signal, min_pwm_signal_throttle, max_pwm_signal_throttle);
   down_motor_signal  = constrain(down_motor_signal, min_pwm_signal_down, max_pwm_signal_down);
-  //  }
 
   go(left_motor,  left_motor_signal);
   go(right_motor, right_motor_signal);
@@ -199,7 +161,33 @@ void loop()    // Main loop
 
 }    // end loop
 
+void check_ping() {
+  unsigned int ping_uS = sonar.ping(); // Send the ping. Get ping time in micro seconds (uS)
+  float distance_cm = ping_uS / US_ROUNDTRIP_CM; // Convert ping time to distance in cm
+  if (distance_cm < 2 && distance_cm > 2) return; // we are accurate within 2 cm, so anything +-2 means nothing is in front of us
 
+  throttle_command = -100 // full speed backwards
+  steering_command = 0    // don't turn
+  rc_down_command  = 0    // don't change height
+
+  //  Map motor signals to ±100, based on min/max pwm signals (so you can adjust the max speed above)
+  //    this also sets -100 to full-speed backwards, and +100 to full-speed forward
+  left_motor_signal  = map(throttle_command + 0.5*steering_command, -100, 100, min_pwm_signal_throttle, max_pwm_signal_throttle);
+  right_motor_signal = map(throttle_command - 0.5*steering_command, -100, 100, min_pwm_signal_throttle, max_pwm_signal_throttle);
+  down_motor_signal  = map(down_command, -100, 100, min_pwm_signal_down, max_pwm_signal_down);
+
+  //  The mapping above still allows the numbers to over-write the limits - this fixes the high 
+  //    and low signals to not go over the limits ...
+  left_motor_signal  = 0.7 * constrain(left_motor_signal, min_pwm_signal_throttle, max_pwm_signal_throttle);
+  right_motor_signal = constrain(right_motor_signal, min_pwm_signal_throttle, max_pwm_signal_throttle);
+  down_motor_signal  = constrain(down_motor_signal, min_pwm_signal_down, max_pwm_signal_down);
+  
+  go(left_motor,  left_motor_signal);
+  go(right_motor, right_motor_signal);
+  go(down_motor,  down_motor_signal);
+  
+  check_ping();
+}
 
 void go(int motor[], int motor_signal)
 // Send positive value for motor signal for forward, negative for backwards
@@ -326,3 +314,51 @@ double getPressure()
   }
   else Serial.println("error starting temperature measurement\n");
 }
+
+void check_barometer() {
+  // Determine if altitude is being driven with RC or the barometer, and if it should be switched ...
+  aux_command = map(pulseIn(aux_pin, HIGH, 25000), min_pulse_aux, max_pulse_aux, -100, 100);
+  if (aux_command < -75)  // assume this means baro-control (this is to the right)
+  {
+    double alt,P;
+    P = getPressure();   // Get a new pressure reading:
+    desired_alt = pressure.altitude(P,baseline) / 0.3048;  // set a baseline desired altitude (in feet) based on new pressure ...
+    rc_control_down = false;
+    for (int i = 1; i < 3; i++)
+    {
+      digitalWrite(led_pin, HIGH);
+      delay(250);
+      digitalWrite(led_pin, LOW);
+      delay(100);
+    }
+  }
+  else if (aux_command > 75)   // rc control ...
+  {
+    rc_control_down = true;
+    for (int i = 1; i < 3; i++)
+    {
+      digitalWrite(led_pin, HIGH);
+      delay(100);
+      digitalWrite(led_pin, LOW);
+      delay(250);
+    }
+  }
+
+  if (rc_control_down == false)
+  {
+    if ( millis() - timer > 250 )     // check pressure every 1/4 second
+    {
+      timer = millis();
+      double alt,P;
+      P = getPressure();   // Get a new pressure reading:
+      alt = pressure.altitude(P,baseline) / 0.3048;  // calculate altitude (in feet) based on new pressure ...
+      float alt_error = alt - desired_alt;
+      float baro_gain = 15;
+      //  This control law does nothing if within 2' of desired altitude, and linear proportional response outside of 2'
+      baro_down_command = 0;
+      if (abs(alt_error) > 2) baro_down_command = alt_error*baro_gain;  // this assumes a command of 0 remains constant, -100 full down, +100 full up
+      baro_down_command = constrain(baro_down_command, -100, 100);    // limit command between ±100
+    }
+  }
+}
+
