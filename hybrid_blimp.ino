@@ -3,24 +3,9 @@
 // Nov 15, 2013
 
 // initialize barometer stuff ...
-#include <SFE_BMP180.h>
+// #include <SFE_BMP180.h>
 #include <Wire.h>
 #include <NewPing.h>
-
-// You will need to create an SFE_BMP180 object, here called "pressure":
-SFE_BMP180 pressure;
-double baseline;   // baseline pressure to work from ...
-
-/* Hardware connections for barometer:
- - (GND) to GND
- + (VDD) to 3.3V
- (WARNING: do not connect + to 5V or the sensor will be damaged!)
- 
- For Uno, Nano, Pro ...
-  SDA to A4
-  SCL to A5    */
-
-
 
 // Initialize other stuff
 int left_motor[]  = {3, 2,  4 }; // 3-pins controlling motor thru h-bridge
@@ -69,37 +54,17 @@ long timer = 0;
 float baro_down_command;
 double desired_alt = 15;   // default to 15' altitude
 
+#define TRIGGER_PIN  12  // Arduino pin tied to trigger pin on the ultrasonic sensor.
+#define ECHO_PIN     11  // Arduino pin tied to echo pin on the ultrasonic sensor.
+#define MAX_DISTANCE 200 // Maximum distance we want to ping for (in centimeters). Maximum sensor distance is rated at 400-500cm.
+
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE); // NewPing setup of pins and maximum distance.
+
 
 void setup()
 {
   Serial.begin(9600);
-  Serial.println("*********************    Hybrid Blimp      ***********************");
-  Serial.println("The hybrid portion is currently the altitude control - default is");
-  Serial.println("to use RC - to switch put the right stick hard-left.  To switch ");
-  Serial.println("back, put the stick hard-right");
-
-  // Initialize the barometer (it is important to get calibration values stored on the device).
-  if (pressure.begin())
-    Serial.println("BMP180 init success");
-  else
-  {
-    // Oops, something went wrong, this is usually a connection problem,
-    // see the comments at the top of this sketch for the proper connections.
-    Serial.println("BMP180 init fail (disconnected?)\n\n");
-    Serial.println("Programmed stopped ...");
-    while(1)
-    {
-      digitalWrite(led_pin, HIGH);
-      delay(75);
-      digitalWrite(led_pin, LOW);
-      delay(75);      
-    }; // Pause forever.
-  }
-  baseline = getPressure();   // baseline pressure
-  Serial.print("baseline pressure: ");
-  Serial.print(baseline);
-  Serial.println(" mb");  
-
+  
   // initialize motor and rc pins ...
   for (int i = 0; i<3; i++)
   {
@@ -114,8 +79,10 @@ void setup()
 
   pinMode(led_pin, OUTPUT);
 
+  Serial.println("meow");
+  
   // initialize sonar
-  Serial.begin(115200); // Open serial monitor at 115200 baud to see ping results.
+  Serial.begin(9600); // Open serial monitor at 115200 baud to see ping results.
 
   //  This function calibrates the radio to set the min/max of the pulse-in values - need to figure out a way to do it when desired,
   //  but not every time ...
@@ -125,8 +92,9 @@ void setup()
 
 // Main Loop
 void loop() {
-  check_barometer()
-  check_ping()
+  check_ping();
+
+  Serial.println("Taking RC input");
   
   //  Map input commands to ±100 - this is so -100 = full-speed backwards, +100 = full-speed forward
   throttle_command = map(pulseIn(throttle_pin, HIGH, 25000), min_pulse_throttle, max_pulse_throttle, -100, 100);
@@ -135,9 +103,7 @@ void loop() {
 
   down_command = rc_down_command;
   if (rc_control_down == false) down_command = baro_down_command;
-
-
-
+  
   // Apply dead-band ...
   if (abs(throttle_command) < dead_band_throttle) throttle_command = 0;
   if (abs(steering_command) < dead_band_steering) steering_command = 0;
@@ -164,11 +130,12 @@ void loop() {
 void check_ping() {
   unsigned int ping_uS = sonar.ping(); // Send the ping. Get ping time in micro seconds (uS)
   float distance_cm = ping_uS / US_ROUNDTRIP_CM; // Convert ping time to distance in cm
-  if (distance_cm < 2 && distance_cm > 2) return; // we are accurate within 2 cm, so anything +-2 means nothing is in front of us
 
-  throttle_command = -100 // full speed backwards
-  steering_command = 0    // don't turn
-  rc_down_command  = 0    // don't change height
+  if (distance_cm < 10 || distance_cm > 150) return; // we are accurate within 2 cm, so anything +-2 means nothing is in front of us
+
+  throttle_command = -25; // full speed backwards
+  steering_command = 0;    // don't turn
+  rc_down_command  = 0;    // don't change height
 
   //  Map motor signals to ±100, based on min/max pwm signals (so you can adjust the max speed above)
   //    this also sets -100 to full-speed backwards, and +100 to full-speed forward
@@ -185,7 +152,8 @@ void check_ping() {
   go(left_motor,  left_motor_signal);
   go(right_motor, right_motor_signal);
   go(down_motor,  down_motor_signal);
-  
+
+  Serial.println("Backing up.");
   check_ping();
 }
 
@@ -255,110 +223,3 @@ void calibrate_radio()
   }
 
 }
-
-
-double getPressure()
-{
-  char status;
-  double T,P,p0,a;
-
-  // You must first get a temperature measurement to perform a pressure reading.
-
-  // Start a temperature measurement:
-  // If request is successful, the number of ms to wait is returned.
-  // If request is unsuccessful, 0 is returned.
-
-  status = pressure.startTemperature();
-  if (status != 0)
-  {
-    // Wait for the measurement to complete:
-
-    delay(status);
-
-    // Retrieve the completed temperature measurement:
-    // Note that the measurement is stored in the variable T.
-    // Use '&T' to provide the address of T to the function.
-    // Function returns 1 if successful, 0 if failure.
-
-    status = pressure.getTemperature(T);
-    if (status != 0)
-    {
-      // Start a pressure measurement:
-      // The parameter is the oversampling setting, from 0 to 3 (highest res, longest wait).
-      // If request is successful, the number of ms to wait is returned.
-      // If request is unsuccessful, 0 is returned.
-
-      status = pressure.startPressure(3);
-      if (status != 0)
-      {
-        // Wait for the measurement to complete:
-        delay(status);
-
-        // Retrieve the completed pressure measurement:
-        // Note that the measurement is stored in the variable P.
-        // Use '&P' to provide the address of P.
-        // Note also that the function requires the previous temperature measurement (T).
-        // (If temperature is stable, you can do one temperature measurement for a number of pressure measurements.)
-        // Function returns 1 if successful, 0 if failure.
-
-        status = pressure.getPressure(P,T);
-        if (status != 0)
-        {
-          return(P);
-        }
-        else Serial.println("error retrieving pressure measurement\n");
-      }
-      else Serial.println("error starting pressure measurement\n");
-    }
-    else Serial.println("error retrieving temperature measurement\n");
-  }
-  else Serial.println("error starting temperature measurement\n");
-}
-
-void check_barometer() {
-  // Determine if altitude is being driven with RC or the barometer, and if it should be switched ...
-  aux_command = map(pulseIn(aux_pin, HIGH, 25000), min_pulse_aux, max_pulse_aux, -100, 100);
-  if (aux_command < -75)  // assume this means baro-control (this is to the right)
-  {
-    double alt,P;
-    P = getPressure();   // Get a new pressure reading:
-    desired_alt = pressure.altitude(P,baseline) / 0.3048;  // set a baseline desired altitude (in feet) based on new pressure ...
-    rc_control_down = false;
-    for (int i = 1; i < 3; i++)
-    {
-      digitalWrite(led_pin, HIGH);
-      delay(250);
-      digitalWrite(led_pin, LOW);
-      delay(100);
-    }
-  }
-  else if (aux_command > 75)   // rc control ...
-  {
-    rc_control_down = true;
-    for (int i = 1; i < 3; i++)
-    {
-      digitalWrite(led_pin, HIGH);
-      delay(100);
-      digitalWrite(led_pin, LOW);
-      delay(250);
-    }
-  }
-
-  if (rc_control_down == false)
-  {
-    if ( millis() - timer > 250 )     // check pressure every 1/4 second
-    {
-      timer = millis();
-      double alt,P;
-      P = getPressure();   // Get a new pressure reading:
-      alt = pressure.altitude(P,baseline) / 0.3048;  // calculate altitude (in feet) based on new pressure ...
-      float alt_error = alt - desired_alt;
-      float baro_gain = 15;
-      //  This control law does nothing if within 2' of desired altitude, and linear proportional response outside of 2'
-      baro_down_command = 0;
-      if (abs(alt_error) > 2) baro_down_command = alt_error*baro_gain;  // this assumes a command of 0 remains constant, -100 full down, +100 full up
-      baro_down_command = constrain(baro_down_command, -100, 100);    // limit command between ±100
-    }
-  }
-}
-
