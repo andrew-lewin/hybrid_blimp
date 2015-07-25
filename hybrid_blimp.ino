@@ -128,12 +128,20 @@ void loop() {
 }    // end loop
 
 void check_ping() {
-  unsigned int ping_uS = sonar.ping(); // Send the ping. Get ping time in micro seconds (uS)
-  float distance_cm = ping_uS / US_ROUNDTRIP_CM; // Convert ping time to distance in cm
-
+  float distance_cm = get_distance();
   if (distance_cm < 10 || distance_cm > 150) return; // we are accurate within 2 cm, so anything +-2 means nothing is in front of us
+  cut_rc_and_force_backward();
+  check_ping();
+}
 
-  throttle_command = -25; // full speed backwards
+float get_distance() {
+  unsigned int ping_uS = sonar.ping(); // Send the ping. Get ping time in micro seconds (uS)
+  float calculated_distance_cm = ping_uS / US_ROUNDTRIP_CM; // Convert ping time to distance in cm
+  return calculated_distance_cm;
+}
+
+void cut_rc_and_force_backward() {
+  throttle_command = -25; // 25% speed backwards
   steering_command = 0;    // don't turn
   rc_down_command  = 0;    // don't change height
 
@@ -153,8 +161,25 @@ void check_ping() {
   go(right_motor, right_motor_signal);
   go(down_motor,  down_motor_signal);
 
-  Serial.println("Backing up.");
-  check_ping();
+  Serial.println("Backing up...");
+
+  bool backing_up = true;
+
+  while(backing_up) {
+    float start_distance_cm = get_distance();
+    for(int i = 0; i<5; i++) {
+      get_distance(); //ping 5 times
+    }
+    float end_distance_cm = get_distance();
+    if (end_distance_cm > start_distance_cm){
+      Serial.println("...");
+    }else {
+      Serial.println("Mayday! Mayday!");
+    }
+    if (end_distance_cm < 3 || end_distance_cm > 150){
+      backing_up = false;
+    }
+  }
 }
 
 void go(int motor[], int motor_signal)
