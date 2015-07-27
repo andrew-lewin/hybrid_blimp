@@ -78,8 +78,6 @@ void setup()
   pinMode(battery_pin,  INPUT);
 
   pinMode(led_pin, OUTPUT);
-
-  Serial.println("meow");
   
   // initialize sonar
   Serial.begin(9600); // Open serial monitor at 115200 baud to see ping results.
@@ -128,13 +126,13 @@ void loop() {
 }    // end loop
 
 void check_ping() {
-  float distance_cm = get_distance();
-  if (distance_cm < 10 || distance_cm > 150) return; // we are accurate within 2 cm, so anything +-2 means nothing is in front of us
+  if (!approaching_object()) return; // we can still be in control with the RC if we aren't approaching the object even if in dangerous distance
   cut_rc_and_force_backward();
   check_ping();
 }
 
 float get_distance() {
+  delay(20);
   unsigned int ping_uS = sonar.ping(); // Send the ping. Get ping time in micro seconds (uS)
   float calculated_distance_cm = ping_uS / US_ROUNDTRIP_CM; // Convert ping time to distance in cm
   return calculated_distance_cm;
@@ -161,25 +159,23 @@ void cut_rc_and_force_backward() {
   go(right_motor, right_motor_signal);
   go(down_motor,  down_motor_signal);
 
-  Serial.println("Backing up...");
-
-  bool backing_up = true;
-
-  while(backing_up) {
-    float start_distance_cm = get_distance();
-    for(int i = 0; i<5; i++) {
-      get_distance(); //ping 5 times
-    }
-    float end_distance_cm = get_distance();
-    if (end_distance_cm > start_distance_cm){
-      Serial.println("...");
-    }else {
+  while(true) {
+    if (approaching_object()){
       Serial.println("Mayday! Mayday!");
-    }
-    if (end_distance_cm < 3 || end_distance_cm > 150){
-      backing_up = false;
+    }else {
+      break;
     }
   }
+}
+
+boolean approaching_object(){
+  float start_distance = get_distance(); // Save initial distance
+  if (start_distance > 150) return false; // We don't care if we are more than 150 CM out.
+  for(int i = 0; i < 3; i++){
+    get_distance(); // We want one one distance and the 4th one after that
+  }
+  float end_distance = get_distance(); // Save end distance
+  return (end_distance - start_distance) < 0; // Return true if the end distance is less than the start distance, meaning we are appraching
 }
 
 void go(int motor[], int motor_signal)
