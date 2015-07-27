@@ -1,6 +1,8 @@
 
-// Quentin McRae
-// Nov 15, 2013
+// Andrew Lewin
+// Ben Burge
+// Preston Balfour
+// Spencer Riches
 
 // initialize barometer stuff ...
 // #include <SFE_BMP180.h>
